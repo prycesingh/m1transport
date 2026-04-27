@@ -19,13 +19,16 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  alwaysRequiredIncidentReportFields,
   getIncidentReportDefaults,
   incidentReportSchema,
   type IncidentReportValues,
+  thirdPartyRequiredIncidentReportFields,
+  witnessRequiredIncidentReportFields,
 } from "@/lib/incident-report-schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, CheckCircle2, Loader2, MapPin } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { AustraliaMap } from "./AustraliaMap";
@@ -75,6 +78,12 @@ export const IncidentReportForm = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [openSections, setOpenSections] = useState<string[]>([
+    "incident-details",
+  ]);
+  const fieldAnchors = useRef<
+    Partial<Record<keyof IncidentReportValues, HTMLDivElement | null>>
+  >({});
 
   const form = useForm<IncidentReportValues>({
     resolver: zodResolver(incidentReportSchema) as any,
@@ -91,6 +100,126 @@ export const IncidentReportForm = () => {
   } = form;
   const tpInvolved = watch("third_party_involved");
   const witnesses = watch("any_witnesses");
+
+  const requiredFieldNames = new Set<keyof IncidentReportValues>(
+    alwaysRequiredIncidentReportFields,
+  );
+
+  if (tpInvolved === "Yes") {
+    for (const fieldName of thirdPartyRequiredIncidentReportFields) {
+      requiredFieldNames.add(fieldName);
+    }
+  }
+
+  if (witnesses === "Yes") {
+    for (const fieldName of witnessRequiredIncidentReportFields) {
+      requiredFieldNames.add(fieldName);
+    }
+  }
+
+  const fieldSectionMap: Partial<Record<keyof IncidentReportValues, string>> = {
+    reporter_name: "incident-details",
+    involved_name: "incident-details",
+    licence_number: "incident-details",
+    driver_code: "incident-details",
+    employee_base: "incident-details",
+    incident_location: "incident-details",
+    incident_date: "incident-details",
+    incident_time: "incident-details",
+    customer_or_manifest: "incident-details",
+    third_party_involved: "incident-details",
+    tp_full_name: "tp-details",
+    tp_contact: "tp-details",
+    tp_licence_front_url: "tp-details",
+    tp_licence_back_url: "tp-details",
+    tp_vehicle_make_model: "tp-vehicle",
+    tp_vehicle_rego: "tp-vehicle",
+    any_witnesses: "witnesses",
+    witness_name: "witnesses",
+    witness_contact: "witnesses",
+    prime_mover_fleet: "company-vehicle",
+    description: "description",
+    damages_to_m1: "description",
+    damages_to_m1_desc: "description",
+    damages_to_tp: "description",
+    damages_to_tp_desc: "description",
+    signer_name: "signatures",
+    signer_role: "signatures",
+    signed_date: "signatures",
+    signature_url: "signatures",
+  };
+
+  const isRequiredField = (name: keyof IncidentReportValues) =>
+    requiredFieldNames.has(name);
+
+  const renderLabel = (name: keyof IncidentReportValues, text: string) => (
+    <>
+      {text}
+      {isRequiredField(name) ? (
+        <span className="text-destructive"> *</span>
+      ) : null}
+    </>
+  );
+
+  const setFieldAnchor =
+    (name: keyof IncidentReportValues) => (node: HTMLDivElement | null) => {
+      fieldAnchors.current[name] = node;
+    };
+
+  const findFirstErrorField = (
+    value: unknown,
+  ): keyof IncidentReportValues | null => {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (
+        nestedValue &&
+        typeof nestedValue === "object" &&
+        "message" in (nestedValue as object)
+      ) {
+        return key as keyof IncidentReportValues;
+      }
+
+      const nestedField = findFirstErrorField(nestedValue);
+      if (nestedField) {
+        return nestedField;
+      }
+    }
+
+    return null;
+  };
+
+  const focusField = (name: keyof IncidentReportValues) => {
+    const sectionValue = fieldSectionMap[name];
+    if (sectionValue && !openSections.includes(sectionValue)) {
+      setOpenSections((current) => [...current, sectionValue]);
+    }
+
+    window.setTimeout(() => {
+      const anchor = fieldAnchors.current[name];
+      const fallback = document.querySelector<HTMLElement>(
+        `[name="${String(name)}"]`,
+      );
+      const target = anchor ?? fallback;
+
+      if (!target) {
+        return;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLButtonElement
+          ? target
+          : target.querySelector<HTMLElement>(
+              "input, textarea, button, [role='combobox']",
+            );
+      focusTarget?.focus();
+    }, 50);
+  };
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -191,7 +320,17 @@ export const IncidentReportForm = () => {
 
   const onError = (errs: any) => {
     console.log("Validation errors:", errs);
-    toast.error("Please complete all required fields");
+    const firstErrorField = findFirstErrorField(errs);
+
+    if (firstErrorField) {
+      focusField(firstErrorField);
+    }
+
+    toast.error("Please complete all required fields", {
+      description: firstErrorField
+        ? `Jumped to ${String(firstErrorField).replace(/_/g, " ")}.`
+        : undefined,
+    });
   };
 
   if (submitted) {
@@ -233,7 +372,7 @@ export const IncidentReportForm = () => {
       {/* State Section - always visible */}
       <div className="bg-card rounded-xl border shadow-[var(--shadow-card)] p-6">
         <Label className="text-base font-semibold flex items-center gap-1">
-          State Incident Occurred In <span className="text-destructive">*</span>
+          {renderLabel("state", "State Incident Occurred In")}
         </Label>
         <p className="text-sm text-muted-foreground mb-3">
           Click on the map or use the dropdown.
@@ -244,7 +383,7 @@ export const IncidentReportForm = () => {
           render={({ field }) => (
             <div className="grid md:grid-cols-2 gap-4">
               <AustraliaMap value={field.value} onChange={field.onChange} />
-              <div>
+              <div ref={setFieldAnchor("state")}>
                 <Select value={field.value} onValueChange={field.onChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select state" />
@@ -268,7 +407,8 @@ export const IncidentReportForm = () => {
 
       <Accordion
         type="multiple"
-        defaultValue={["incident-details"]}
+        value={openSections}
+        onValueChange={setOpenSections}
         className="space-y-3"
       >
         {/* INCIDENT DETAILS */}
@@ -282,29 +422,44 @@ export const IncidentReportForm = () => {
           <AccordionContent className="space-y-4 pt-2">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Name of person reporting the incident *</Label>
+                <Label>
+                  {renderLabel(
+                    "reporter_name",
+                    "Name of person reporting the incident",
+                  )}
+                </Label>
                 <Input {...register("reporter_name")} />
                 {fieldError("reporter_name")}
               </div>
               <div>
                 <Label>
-                  Name of person involved (write AS ABOVE if same) *
+                  {renderLabel(
+                    "involved_name",
+                    "Name of person involved (write AS ABOVE if same)",
+                  )}
                 </Label>
                 <Input {...register("involved_name")} />
                 {fieldError("involved_name")}
               </div>
               <div>
-                <Label>Licence Number — if applicable *</Label>
+                <Label>
+                  {renderLabel(
+                    "licence_number",
+                    "Licence Number — if applicable",
+                  )}
+                </Label>
                 <Input {...register("licence_number")} />
                 {fieldError("licence_number")}
               </div>
               <div>
-                <Label>Driver Code *</Label>
+                <Label>{renderLabel("driver_code", "Driver Code")}</Label>
                 <Input {...register("driver_code")} />
                 {fieldError("driver_code")}
               </div>
               <div>
-                <Label>Employee Base Location *</Label>
+                <Label>
+                  {renderLabel("employee_base", "Employee Base Location")}
+                </Label>
                 <Input {...register("employee_base")} />
                 {fieldError("employee_base")}
               </div>
@@ -313,7 +468,9 @@ export const IncidentReportForm = () => {
                 <Input {...register("contractor_name")} />
               </div>
               <div className="md:col-span-2">
-                <Label>Location of Incident *</Label>
+                <Label>
+                  {renderLabel("incident_location", "Location of Incident")}
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     {...register("incident_location")}
@@ -336,22 +493,35 @@ export const IncidentReportForm = () => {
                 {fieldError("incident_location")}
               </div>
               <div>
-                <Label>Date *</Label>
+                <Label>{renderLabel("incident_date", "Date")}</Label>
                 <Input type="date" {...register("incident_date")} />
                 {fieldError("incident_date")}
               </div>
               <div>
-                <Label>Time *</Label>
+                <Label>{renderLabel("incident_time", "Time")}</Label>
                 <Input type="time" {...register("incident_time")} />
                 {fieldError("incident_time")}
               </div>
               <div className="md:col-span-2">
-                <Label>Customer Name or manifest number *</Label>
+                <Label>
+                  {renderLabel(
+                    "customer_or_manifest",
+                    "Customer Name or manifest number",
+                  )}
+                </Label>
                 <Input {...register("customer_or_manifest")} />
                 {fieldError("customer_or_manifest")}
               </div>
-              <div className="md:col-span-2">
-                <Label>Any Third Party Involved *</Label>
+              <div
+                className="md:col-span-2"
+                ref={setFieldAnchor("third_party_involved")}
+              >
+                <Label>
+                  {renderLabel(
+                    "third_party_involved",
+                    "Any Third Party Involved",
+                  )}
+                </Label>
                 <Controller
                   control={control}
                   name="third_party_involved"
@@ -385,36 +555,54 @@ export const IncidentReportForm = () => {
               </AccordionTrigger>
               <AccordionContent className="space-y-4 pt-2">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Third Party full name *</Label>
+                  <div ref={setFieldAnchor("tp_full_name")}>
+                    <Label>
+                      {renderLabel("tp_full_name", "Third Party full name")}
+                    </Label>
                     <Input {...register("tp_full_name")} />
+                    {fieldError("tp_full_name")}
                   </div>
-                  <div>
-                    <Label>Third Party contact number *</Label>
+                  <div ref={setFieldAnchor("tp_contact")}>
+                    <Label>
+                      {renderLabel("tp_contact", "Third Party contact number")}
+                    </Label>
                     <Input {...register("tp_contact")} />
+                    {fieldError("tp_contact")}
                   </div>
-                  <Controller
-                    control={control}
-                    name="tp_licence_front_url"
-                    render={({ field }) => (
-                      <FileUploadField
-                        label="Third party licence front *"
-                        value={field.value}
-                        onChange={field.onChange}
-                      />
-                    )}
-                  />
-                  <Controller
-                    control={control}
-                    name="tp_licence_back_url"
-                    render={({ field }) => (
-                      <FileUploadField
-                        label="Third party licence back *"
-                        value={field.value}
-                        onChange={field.onChange}
-                      />
-                    )}
-                  />
+                  <div ref={setFieldAnchor("tp_licence_front_url")}>
+                    <Controller
+                      control={control}
+                      name="tp_licence_front_url"
+                      render={({ field }) => (
+                        <FileUploadField
+                          label={renderLabel(
+                            "tp_licence_front_url",
+                            "Third party licence front",
+                          )}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      )}
+                    />
+                    {fieldError("tp_licence_front_url")}
+                  </div>
+                  <div ref={setFieldAnchor("tp_licence_back_url")}>
+                    <Controller
+                      control={control}
+                      name="tp_licence_back_url"
+                      render={({ field }) => (
+                        <FileUploadField
+                          label={renderLabel(
+                            "tp_licence_back_url",
+                            "Third party licence back",
+                          )}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      )}
+                    />
+                    {fieldError("tp_licence_back_url")}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -428,13 +616,22 @@ export const IncidentReportForm = () => {
               </AccordionTrigger>
               <AccordionContent className="space-y-4 pt-2">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Vehicle Make and Model *</Label>
+                  <div ref={setFieldAnchor("tp_vehicle_make_model")}>
+                    <Label>
+                      {renderLabel(
+                        "tp_vehicle_make_model",
+                        "Vehicle Make and Model",
+                      )}
+                    </Label>
                     <Input {...register("tp_vehicle_make_model")} />
+                    {fieldError("tp_vehicle_make_model")}
                   </div>
-                  <div>
-                    <Label>Registration *</Label>
+                  <div ref={setFieldAnchor("tp_vehicle_rego")}>
+                    <Label>
+                      {renderLabel("tp_vehicle_rego", "Registration")}
+                    </Label>
                     <Input {...register("tp_vehicle_rego")} />
+                    {fieldError("tp_vehicle_rego")}
                   </div>
                   <div className="md:col-span-2">
                     <Label>Insurance Company details</Label>
@@ -497,8 +694,8 @@ export const IncidentReportForm = () => {
         >
           <AccordionTrigger>{sectionHeader("Witnesses")}</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
-            <div>
-              <Label>Any Witnesses *</Label>
+            <div ref={setFieldAnchor("any_witnesses")}>
+              <Label>{renderLabel("any_witnesses", "Any Witnesses")}</Label>
               <Controller
                 control={control}
                 name="any_witnesses"
@@ -518,13 +715,19 @@ export const IncidentReportForm = () => {
             </div>
             {witnesses === "Yes" && (
               <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Witness full name *</Label>
+                <div ref={setFieldAnchor("witness_name")}>
+                  <Label>
+                    {renderLabel("witness_name", "Witness full name")}
+                  </Label>
                   <Input {...register("witness_name")} />
+                  {fieldError("witness_name")}
                 </div>
-                <div>
-                  <Label>Witness contact number *</Label>
+                <div ref={setFieldAnchor("witness_contact")}>
+                  <Label>
+                    {renderLabel("witness_contact", "Witness contact number")}
+                  </Label>
                   <Input {...register("witness_contact")} />
+                  {fieldError("witness_contact")}
                 </div>
               </div>
             )}
@@ -542,7 +745,9 @@ export const IncidentReportForm = () => {
           <AccordionContent className="space-y-4 pt-2">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Prime Mover Fleet Number *</Label>
+                <Label>
+                  {renderLabel("prime_mover_fleet", "Prime Mover Fleet Number")}
+                </Label>
                 <Input {...register("prime_mover_fleet")} />
                 {fieldError("prime_mover_fleet")}
               </div>
@@ -592,13 +797,16 @@ export const IncidentReportForm = () => {
           </AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
             <div>
-              <Label>Description *</Label>
+              <Label>{renderLabel("description", "Description")}</Label>
               <Textarea rows={5} {...register("description")} />
               {fieldError("description")}
             </div>
-            <div>
+            <div ref={setFieldAnchor("damages_to_m1")}>
               <Label>
-                Is there any damages to M1 Vehicle (Truck or Trailers)? *
+                {renderLabel(
+                  "damages_to_m1",
+                  "Is there any damages to M1 Vehicle (Truck or Trailers)?",
+                )}
               </Label>
               <Controller
                 control={control}
@@ -622,13 +830,21 @@ export const IncidentReportForm = () => {
             </div>
             <div>
               <Label>
-                Describe damages to M1 vehicle — put NA if no damages *
+                {renderLabel(
+                  "damages_to_m1_desc",
+                  "Describe damages to M1 vehicle — put NA if no damages",
+                )}
               </Label>
               <Textarea rows={3} {...register("damages_to_m1_desc")} />
               {fieldError("damages_to_m1_desc")}
             </div>
-            <div>
-              <Label>Is there any damages to third party vehicle? *</Label>
+            <div ref={setFieldAnchor("damages_to_tp")}>
+              <Label>
+                {renderLabel(
+                  "damages_to_tp",
+                  "Is there any damages to third party vehicle?",
+                )}
+              </Label>
               <Controller
                 control={control}
                 name="damages_to_tp"
@@ -650,7 +866,12 @@ export const IncidentReportForm = () => {
               {fieldError("damages_to_tp")}
             </div>
             <div>
-              <Label>Describe damages — put NA if no damages *</Label>
+              <Label>
+                {renderLabel(
+                  "damages_to_tp_desc",
+                  "Describe damages — put NA if no damages",
+                )}
+              </Label>
               <Textarea rows={3} {...register("damages_to_tp_desc")} />
               {fieldError("damages_to_tp_desc")}
             </div>
@@ -925,23 +1146,34 @@ export const IncidentReportForm = () => {
             </p>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Involved person full name *</Label>
+                <Label>
+                  {renderLabel("signer_name", "Involved person full name")}
+                </Label>
                 <Input {...register("signer_name")} />
                 {fieldError("signer_name")}
               </div>
               <div>
-                <Label>Role or Title of person *</Label>
+                <Label>
+                  {renderLabel("signer_role", "Role or Title of person")}
+                </Label>
                 <Input {...register("signer_role")} />
                 {fieldError("signer_role")}
               </div>
               <div>
-                <Label>Date signed by person *</Label>
+                <Label>
+                  {renderLabel("signed_date", "Date signed by person")}
+                </Label>
                 <Input type="date" {...register("signed_date")} />
                 {fieldError("signed_date")}
               </div>
             </div>
-            <div>
-              <Label>Please sign below with your mouse or finger *</Label>
+            <div ref={setFieldAnchor("signature_url")}>
+              <Label>
+                {renderLabel(
+                  "signature_url",
+                  "Please sign below with your mouse or finger",
+                )}
+              </Label>
               <Controller
                 control={control}
                 name="signature_url"

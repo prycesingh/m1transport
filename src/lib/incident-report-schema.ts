@@ -3,7 +3,7 @@ import { z } from "zod";
 const REQUIRED = z.string().trim().min(1, "Required").max(500);
 const OPTIONAL = z.string().trim().max(500).optional().or(z.literal(""));
 
-export const incidentReportSchema = z.object({
+const incidentReportBaseSchema = z.object({
   state: REQUIRED,
   reporter_name: REQUIRED,
   involved_name: REQUIRED,
@@ -72,7 +72,93 @@ export const incidentReportSchema = z.object({
   geo_lng: z.number().optional(),
 });
 
+export const incidentReportSchema = incidentReportBaseSchema.superRefine(
+  (values, ctx) => {
+    if (values.third_party_involved === "Yes") {
+      const thirdPartyRequiredFields = [
+        "tp_full_name",
+        "tp_contact",
+        "tp_licence_front_url",
+        "tp_licence_back_url",
+        "tp_vehicle_make_model",
+        "tp_vehicle_rego",
+      ] as const;
+
+      for (const fieldName of thirdPartyRequiredFields) {
+        const value = values[fieldName];
+        if (typeof value === "string" ? value.trim().length === 0 : !value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Required",
+            path: [fieldName],
+          });
+        }
+      }
+    }
+
+    if (values.any_witnesses === "Yes") {
+      const witnessRequiredFields = [
+        "witness_name",
+        "witness_contact",
+      ] as const;
+
+      for (const fieldName of witnessRequiredFields) {
+        const value = values[fieldName];
+        if (typeof value === "string" ? value.trim().length === 0 : !value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Required",
+            path: [fieldName],
+          });
+        }
+      }
+    }
+  },
+);
+
 export type IncidentReportValues = z.infer<typeof incidentReportSchema>;
+
+export const alwaysRequiredIncidentReportFields: Array<
+  keyof IncidentReportValues
+> = [
+  "state",
+  "reporter_name",
+  "involved_name",
+  "licence_number",
+  "driver_code",
+  "employee_base",
+  "incident_location",
+  "incident_date",
+  "incident_time",
+  "customer_or_manifest",
+  "third_party_involved",
+  "any_witnesses",
+  "prime_mover_fleet",
+  "description",
+  "damages_to_m1",
+  "damages_to_m1_desc",
+  "damages_to_tp",
+  "damages_to_tp_desc",
+  "signer_name",
+  "signer_role",
+  "signed_date",
+  "signature_url",
+];
+
+export const thirdPartyRequiredIncidentReportFields: Array<
+  keyof IncidentReportValues
+> = [
+  "tp_full_name",
+  "tp_contact",
+  "tp_licence_front_url",
+  "tp_licence_back_url",
+  "tp_vehicle_make_model",
+  "tp_vehicle_rego",
+];
+
+export const witnessRequiredIncidentReportFields: Array<
+  keyof IncidentReportValues
+> = ["witness_name", "witness_contact"];
 
 export function getIncidentReportDefaults(): Partial<IncidentReportValues> {
   const now = new Date();

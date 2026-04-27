@@ -3,11 +3,12 @@
 import { Button } from "@/components/ui/button";
 import { uploadFile } from "@/lib/upload-file";
 import { Check, Loader2, Upload, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 interface Props {
-  label: string;
+  label: ReactNode;
   value?: string;
   onChange: (url: string | undefined) => void;
 }
