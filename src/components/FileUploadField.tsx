@@ -7,6 +7,25 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === "string" && maybeMessage.trim().length > 0) {
+      return maybeMessage;
+    }
+  }
+
+  return "Please try again.";
+}
+
 interface Props {
   label: ReactNode;
   value?: string;
@@ -26,9 +45,10 @@ export const FileUploadField = ({ label, value, onChange }: Props) => {
       const url = await uploadFile(file, file.name);
       onChange(url);
       toast.success("Uploaded");
-    } catch (error: any) {
+    } catch (error) {
+      console.error("File upload failed", error);
       toast.error("Upload failed", {
-        description: error.message || "Please try again.",
+        description: toErrorMessage(error),
       });
     } finally {
       setUploading(false);

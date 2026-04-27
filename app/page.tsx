@@ -13,15 +13,15 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-secondary/30 to-background">
-      <header className="bg-[image:var(--gradient-header)] text-primary-foreground shadow-[var(--shadow-elevated)]">
+      <header className="bg-sky-600 text-primary-foreground shadow-[var(--shadow-elevated)]">
         <div className="container max-w-5xl mx-auto px-4 py-6 flex items-center gap-4">
-          <div className="bg-white/10 backdrop-blur p-3 rounded-lg">
+          <div className="backdrop-blur p-3 rounded-lg">
             <Image
               src="/logo.png"
               alt="M1 Transports"
-              width={32}
-              height={32}
-              className="h-8 w-8"
+              width={72}
+              height={72}
+              className="w-18 aspect-square object-contain"
             />
           </div>
           <div>

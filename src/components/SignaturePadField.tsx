@@ -1,11 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
-import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
 import { uploadFile } from "@/lib/upload-file";
-import { toast } from "sonner";
 import { Check, Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
+import SignatureCanvas from "react-signature-canvas";
+import { toast } from "sonner";
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const maybeMessage = (error as { message?: unknown }).message;
+    if (typeof maybeMessage === "string" && maybeMessage.trim().length > 0) {
+      return maybeMessage;
+    }
+  }
+
+  return "Please try again.";
+}
 
 interface Props {
   value?: string;
@@ -30,12 +49,16 @@ export const SignaturePadField = ({ value, onChange }: Props) => {
     try {
       const dataUrl = ref.current.getCanvas().toDataURL("image/png");
       const blob = await (await fetch(dataUrl)).blob();
-      const url = await uploadFile(blob, `signature-${crypto.randomUUID()}.png`);
+      const url = await uploadFile(
+        blob,
+        `signature-${crypto.randomUUID()}.png`,
+      );
       onChange(url);
       toast.success("Signature saved");
-    } catch (error: any) {
+    } catch (error) {
+      console.error("Signature upload failed", error);
       toast.error("Failed to save signature", {
-        description: error.message || "Please try again.",
+        description: toErrorMessage(error),
       });
     } finally {
       setSaving(false);
@@ -53,9 +76,17 @@ export const SignaturePadField = ({ value, onChange }: Props) => {
         />
       </div>
       <div className="flex gap-2 items-center">
-        <Button type="button" variant="outline" size="sm" onClick={clear}>Clear</Button>
+        <Button type="button" variant="outline" size="sm" onClick={clear}>
+          Clear
+        </Button>
         <Button type="button" size="sm" onClick={save} disabled={saving}>
-          {saving ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Saving</> : "Use This Signature"}
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Saving
+            </>
+          ) : (
+            "Use This Signature"
+          )}
         </Button>
         {value && (
           <span className="text-sm text-success flex items-center gap-1">
